@@ -1,6 +1,6 @@
 import os
 SMK_DIR = os.path.dirname(workflow.snakefile) #workflow.snakefile == full path to snakefile 
-SCRIPT_DIR = "{SMK_DIR}/script_dir"
+SCRIPT_DIR = "{}/script_dir".format(SMK_DIR)
 shell.prefix("source {}/env.cfg; set -eo pipefail;".format(SMK_DIR)) #source env config before anything gets run ##these eo sets tells pipeline to stop running if one of lines fails.
 configfile: "msa.yaml"
 fofn = [os.path.abspath(line.strip()) for line in open(config["fofn"]) ] #get all fastas in fofn
@@ -40,10 +40,13 @@ def get_region_fasta(wc):
 
 rule run_MSA:
     input:
-        fasta = get_region_fasta 
+        fasta = get_region_fasta  
     output:
         msa = "{RGN}/{RGN}_MSA.fa"
-    shell:''''''
+    shell:'''
+{SCRIPT_DIR}/run_mafft_msa.sh {input.fasta} {output.msa}
+'''
+
 rule run_raxml:
     input:
         msa = rules.run_MSA.output.msa #"{RGN}/{RGN}_MSA.fa"
