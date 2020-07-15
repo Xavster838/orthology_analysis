@@ -1,6 +1,6 @@
 TBC1D3:
-    ref: /net/eichler/vol26/projects/chm13_t2t/nobackups/orthology_analysis/genome_subsets/hg38_chr17.fa
+    ref: {hg38 : /net/eichler/vol26/projects/chm13_t2t/nobackups/orthology_analysis/genome_subsets/hg38_chr17.fa}
     regions: regions.bed
     qs:
-        - /net/eichler/vol26/projects/chm13_t2t/nobackups/orthology_analysis/genome_subsets/clint_chimp_utg000005l.fa
-        - /net/eichler/vol26/projects/chm13_t2t/nobackups/orthology_analysis/genome_subsets/orangutan_chr17.fa
+        - chimp : /net/eichler/vol26/projects/chm13_t2t/nobackups/orthology_analysis/genome_subsets/clint_chimp_utg000005l.fa
+        - orangutan : /net/eichler/vol26/projects/chm13_t2t/nobackups/orthology_analysis/genome_subsets/orangutan_chr17.fa
