@@ -2,13 +2,15 @@
 # run raxml in MSA step for given regions.
 # inputs: output directory, MSA file .
 # output: all outputs of raxml pipeline.
-INPUT_MSA_fasta=`realpath $1`
+INPUT_MSA_fasta=$1
 OUTPUT_name=$2
-OUPUT_dir=$3
+OUTPUT_dir=$3
+
 
 initial_dir=$PWD
 script_dir=`dirname $0`
 input_dir=`dirname ${INPUT_MSA_fasta}`
+
 
 echo $script_dir
 echo `ls ${script_dir}`
