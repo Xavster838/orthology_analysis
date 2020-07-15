@@ -53,7 +53,9 @@ rule run_raxml:
     output:
         raxml = "{RGN}/RAxML_bootstrap.{RGN}" 
     shell: '''
-echo "working on {wildcards.RGN} snakemake" '''
+#echo "working on {wildcards.RGN} snakemake"
+{SCRIPT_DIR}/run_raxml.sh {input.msa} {wildcards.RGN} {wildcards.RGN}
+'''
 
 
        
