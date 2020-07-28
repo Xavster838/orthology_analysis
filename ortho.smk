@@ -21,7 +21,7 @@ def get_regions_list( bed_file_path ):
     regions_list = []
     with open(bed_file_path) as fp:
         for cnt, line in enumerate(fp):
-            if(line[0] == '#'): #skip comments in bed file.
+            if(line[0] == '#' or len( line.strip()) == 0 ): #skip comments in bed file.
                 continue
             regions_list.append( get_region( str(line) ) )
     
@@ -38,11 +38,23 @@ workdir: "ortho_results" #add output directory
 wildcard_constraints:
     SM = "|".join(SMS)
 
+ruleorder: region_fasta > query_region_fasta
 
 def get_ref(wc): #wc is snakemake object that looks at wildcards of rule that calls get_ref
     return( SM_ref[wc.SM] )
 def get_qs(wc):
     return( SM_qs[wc.SM])
+def get_q_contigs( query_list):
+	"""
+	return list of all contigs in query list files. 
+	"""
+	contigs = []
+	for cur_q in query_list:
+		with open(cur_q) as fp:
+			for cnt , line in enumerate(fp):
+				if(line[0] == ">"):
+					contigs.append( line.strip(">").rstrip()) 
+	return contigs
 
 def get_region_fastas(wc):
     all_fastas = []
@@ -53,12 +65,29 @@ def get_region_fastas(wc):
         all_fastas += fastas
     return( all_fastas )
 
+def get_region_q_contig_fastas(wc):
+	"""
+	get file names for fastas with region and query contig specific sequence.
+	@input: wc
+	@output: list of fasta file names used for rule all
+	"""
+	all_fastas = []
+	for SM in SMS:
+		cur_regions = SM_region[SM]
+		cur_q_contigs = get_q_contigs(SM_qs[SM])
+		cur_rgn_fastas = expand("{SM}_{RGN}", SM = [SM] , RGN = range( len(cur_regions) )) #double expand...
+		for fasta in cur_rgn_fastas:
+			fastas = expand(fasta + "_{Q_CONTIG}.fa", Q_CONTIG = cur_q_contigs )
+			all_fastas += fastas
+	return( all_fastas )
+
 
 
 rule all:
-    input:
-        fastas = get_region_fastas 
-    
+	input:
+		rgn_fastas = get_region_fastas ,
+		fastas_region_q = get_region_q_contig_fastas
+
 rule alignment:
     input:
         ref = get_ref , 
@@ -95,7 +124,7 @@ rule region_fasta:
     params:
         regions = get_region 
     output:
-        fasta = "{SM}_{RGN}.fa" #note may have to change the naming scheme...
+        fasta = "{SM}_{params.regions}.fa" #note may have to change the naming scheme...
     shell:"""
 #echo "{params.regions}"
 subseq_path=/net/eichler/vol27/projects/structural_variation/nobackups/tools/seqtools/201910/CentOS6/bin/subseqfa
@@ -104,8 +133,11 @@ $subseq_path -r '{params.regions}' -b -o {output.fasta} {input.bam}
 samtools faidx {input.fasta} '{params.regions}' >> {output.fasta}
 """
 
-
-
+rule query_region_fasta:
+	input:
+		bam = "{SM}.bam"
+	output:
+		query_region_fasta = "{SM}_{RGN}_{Q}.fa"
 
 
 
