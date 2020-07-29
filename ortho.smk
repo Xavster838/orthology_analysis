@@ -19,13 +19,7 @@ def get_regions_list( bed_file_path ):
 		return("{}:{}-{}".format(line[0], line[1], line[2] ))
     
 	regions_dict = {} #regions_list = []
-#    with open(bed_file_path) as fp:
-#        for cnt, line in enumerate(fp):
-#            if(line[0] == '#' or len( line.strip()) == 0 ): #skip comments in bed file.
-#                continue
-#            regions_list.append( get_region( str(line) ) )
-#  
-########
+	
 	for line in open(bed_file_path):
 		if(line[0] == '#' or not line.strip()): #remove initial bed comment lines or empty lines
 			continue
@@ -36,8 +30,7 @@ def get_regions_list( bed_file_path ):
 			key = t[3]
 		regions_dict.setdefault(key , [])
 		regions_dict[key] = get_region(t)
-#######
-	print(regions_dict.items())
+	#print(regions_dict.items())
 	return(regions_dict)#return(regions_list)
 
 
@@ -50,9 +43,7 @@ workdir: "ortho_results" #add output directory
 
 wildcard_constraints:
 	SM = "|".join(SMS) ,
-	RGN = "\d+"#"|".join( [item for sublist in SM_region for item in sublist] )
-
-print( [item for sublist in SM_region] )
+	RGN = "|".join( [key for k , v in SM_region.items() for key in v]  ) #"\d+"
 #ruleorder: region_fasta > query_region_fasta
 
 def get_ref(wc): #wc is snakemake object that looks at wildcards of rule that calls get_ref
