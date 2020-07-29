@@ -8,42 +8,56 @@ SM_qs = {}
 SM_ref = {}
 
 def get_regions_list( bed_file_path ):
-    """
-    given bed_file_path return list of region element characters.
-    """
-    def get_region(line):
-        """
-        helper function: given line from bed file, process and turn into regions format.
-        """
-        line_split = line.strip().split() #strip flanking whitespace and split on whitespace
-        return("{}:{}-{}".format(line_split[0], line_split[1], line_split[2] ))
+	"""
+	given bed_file_path return list of region element characters.
+	"""
+	def get_region(line):
+		"""
+		helper function: given line from bed file, process and turn into regions format.
+		"""
+		#line_split = line.strip().split() #strip flanking whitespace and split on whitespace
+		return("{}:{}-{}".format(line[0], line[1], line[2] ))
     
-    regions_list = []
-    with open(bed_file_path) as fp:
-        for cnt, line in enumerate(fp):
-            if(line[0] == '#' or len( line.strip()) == 0 ): #skip comments in bed file.
-                continue
-            regions_list.append( get_region( str(line) ) )
-    
-    return(regions_list)
+	regions_dict = {} #regions_list = []
+#    with open(bed_file_path) as fp:
+#        for cnt, line in enumerate(fp):
+#            if(line[0] == '#' or len( line.strip()) == 0 ): #skip comments in bed file.
+#                continue
+#            regions_list.append( get_region( str(line) ) )
+#  
+########
+	for line in open(bed_file_path):
+		if(line[0] == '#' or not line.strip()): #remove initial bed comment lines or empty lines
+			continue
+		t = line.strip().split() #strip white space and split into array of bed columns
+		if( len(t) != 4):
+			key = "_".join(t)
+		else:
+			key = t[3]
+		regions_dict.setdefault(key , [])
+		regions_dict[key] = get_region(t)
+#######
+	print(regions_dict.items())
+	return(regions_dict)#return(regions_list)
 
 
 for SM in SMS:
-    SM_region[SM] = get_regions_list(config[SM]["regions"])
-    SM_qs[SM] = [os.path.abspath(q) for q in config[SM]["qs"] ]
-    SM_ref[SM] = os.path.abspath(config[SM]["ref"])
+	SM_region[SM] = get_regions_list(config[SM]["regions"])
+	SM_qs[SM] = [os.path.abspath(q) for q in config[SM]["qs"] ]
+	SM_ref[SM] = os.path.abspath(config[SM]["ref"])
 
 workdir: "ortho_results" #add output directory
 
 wildcard_constraints:
-    SM = "|".join(SMS)
+	SM = "|".join(SMS) ,
+	RGN = "\d+"#"|".join( [item for sublist in SM_region for item in sublist] )
 
-ruleorder: region_fasta > query_region_fasta
+#ruleorder: region_fasta > query_region_fasta
 
 def get_ref(wc): #wc is snakemake object that looks at wildcards of rule that calls get_ref
-    return( SM_ref[wc.SM] )
+	return( SM_ref[wc.SM] )
 def get_qs(wc):
-    return( SM_qs[wc.SM])
+	return( SM_qs[wc.SM])
 def get_q_contigs( query_list):
 	"""
 	return list of all contigs in query list files. 
@@ -65,7 +79,7 @@ def get_region_fastas(wc):
         all_fastas += fastas
     return( all_fastas )
 
-def get_region_q_contig_fastas(wc):
+def get_region_q_contig_sams(wc):
 	"""
 	get file names for fastas with region and query contig specific sequence.
 	@input: wc
@@ -77,7 +91,7 @@ def get_region_q_contig_fastas(wc):
 		cur_q_contigs = get_q_contigs(SM_qs[SM])
 		cur_rgn_fastas = expand("{SM}_{RGN}", SM = [SM] , RGN = range( len(cur_regions) )) #double expand...
 		for fasta in cur_rgn_fastas:
-			fastas = expand(fasta + "_{Q_CONTIG}.fa", Q_CONTIG = cur_q_contigs )
+			fastas = expand(fasta + "_{Q_CONTIG}.sam", Q_CONTIG = cur_q_contigs )
 			all_fastas += fastas
 	return( all_fastas )
 
@@ -86,7 +100,6 @@ def get_region_q_contig_fastas(wc):
 rule all:
 	input:
 		rgn_fastas = get_region_fastas ,
-		fastas_region_q = get_region_q_contig_fastas
 
 rule alignment:
     input:
@@ -124,7 +137,7 @@ rule region_fasta:
     params:
         regions = get_region 
     output:
-        fasta = "{SM}_{params.regions}.fa" #note may have to change the naming scheme...
+        fasta = "{SM}_{RGN}.fa" #note may have to change the naming scheme...
     shell:"""
 #echo "{params.regions}"
 subseq_path=/net/eichler/vol27/projects/structural_variation/nobackups/tools/seqtools/201910/CentOS6/bin/subseqfa
@@ -133,11 +146,30 @@ $subseq_path -r '{params.regions}' -b -o {output.fasta} {input.bam}
 samtools faidx {input.fasta} '{params.regions}' >> {output.fasta}
 """
 
-rule query_region_fasta:
+rule query_region_sam:
 	input:
 		bam = "{SM}.bam"
+		bai = rules.get_alignment_index.output.bai
+	params:
+		regions = get_region
 	output:
-		query_region_fasta = "{SM}_{RGN}_{Q}.fa"
+		query_region_sam = temp("{SM}_{RGN}_{Q}.sam")
 
+	shell:"""
+samtools view -H {input.bam} > {output.query_region_sam}
+samtools view {input.bam} | grep '{wildcards.Q}' >> {output.query_region_sam}
+"""
 
+rule get_perID_results:
+	input:
+		sam_region_q = get_region_q_contig_sams 
+	output:
+		bed = temp("{SM}_{RGN}_{Q}.bed")
+	shell:"""
+perID_path=~mvollger/projects/hifi_asm/scripts/samIdentity.py
+samtools view -h -F 260 -S {input.sam_region_q} | python3 ${perID_path} --bed - > {output.bed}
+"""
+
+#rule consolidate_table:
+#	inputs:
 
