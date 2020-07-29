@@ -52,6 +52,7 @@ wildcard_constraints:
 	SM = "|".join(SMS) ,
 	RGN = "\d+"#"|".join( [item for sublist in SM_region for item in sublist] )
 
+print( [item for sublist in SM_region] )
 #ruleorder: region_fasta > query_region_fasta
 
 def get_ref(wc): #wc is snakemake object that looks at wildcards of rule that calls get_ref
@@ -148,7 +149,7 @@ samtools faidx {input.fasta} '{params.regions}' >> {output.fasta}
 
 rule query_region_sam:
 	input:
-		bam = "{SM}.bam"
+		bam = "{SM}.bam" ,
 		bai = rules.get_alignment_index.output.bai
 	params:
 		regions = get_region
