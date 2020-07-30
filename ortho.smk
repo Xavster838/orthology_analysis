@@ -39,6 +39,8 @@ for SM in SMS:
 	SM_qs[SM] = [os.path.abspath(q) for q in config[SM]["qs"] ]
 	SM_ref[SM] = os.path.abspath(config[SM]["ref"])
 
+print(SM_region)
+
 workdir: "ortho_results" #add output directory
 
 wildcard_constraints:
@@ -67,7 +69,7 @@ def get_region_fastas(wc):
     for SM in SMS:
         cur_regions = SM_region[SM]
 
-        fastas = expand("{SM}_{RGN}.fa", SM = [SM] , RGN = range( len(cur_regions) ) ) #double expand...
+        fastas = expand("{SM}_{RGN}.fa", SM = [SM] , RGN = list(cur_regions.keys()) ) #double expand...
         all_fastas += fastas
     return( all_fastas )
 
@@ -77,15 +79,15 @@ def get_region_q_contig_sams(wc):
 	@input: wc
 	@output: list of fasta file names used for rule all
 	"""
-	all_fastas = []
+	all_sams = []
 	for SM in SMS:
 		cur_regions = SM_region[SM]
 		cur_q_contigs = get_q_contigs(SM_qs[SM])
-		cur_rgn_fastas = expand("{SM}_{RGN}", SM = [SM] , RGN = range( len(cur_regions) )) #double expand...
-		for fasta in cur_rgn_fastas:
-			fastas = expand(fasta + "_{Q_CONTIG}.sam", Q_CONTIG = cur_q_contigs )
-			all_fastas += fastas
-	return( all_fastas )
+		cur_SM_RGNs = expand("{SM}_{RGN}", SM = [SM] , RGN = list(cur_regions.keys() ) )  #double expand...
+		for SM_RGN in cur_SM_RGNs:
+			sams = expand(SM_RGN + "_{Q_CONTIG}.sam", Q_CONTIG = cur_q_contigs )
+			all_sams += sams
+	return( all_sams )
 
 
 
@@ -119,7 +121,7 @@ samtools index {input.bam}
 """
 
 def get_region( wc  ):
-    return SM_region[wc.SM][int(wc.RGN)]
+    return SM_region[wc.SM][wc.RGN]
 
 rule region_fasta:
     input:
