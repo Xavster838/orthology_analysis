@@ -2,6 +2,7 @@ import os
 SMK_DIR = os.path.dirname(workflow.snakefile) #workflow.snakefile == full path to snakefile 
 shell.prefix("source {}/env.cfg; set -eo pipefail;".format(SMK_DIR)) #source env config before anything gets run ##these eo sets tells pipeline to stop running if one of lines fails.
 configfile: "ortho.yaml"
+CNF_DIR = os.path.dirname( os.path.abspath("ortho.yaml") )
 SMS = list(config.keys()) #just strings of element names in yaml ["a","b"]
 SM_region = {}
 SM_qs = {}
@@ -39,7 +40,6 @@ for SM in SMS:
 	SM_qs[SM] = [os.path.abspath(q) for q in config[SM]["qs"] ]
 	SM_ref[SM] = os.path.abspath(config[SM]["ref"])
 
-print(SM_region)
 
 workdir: "ortho_results" #add output directory
 
@@ -89,11 +89,11 @@ def get_region_q_contig_sams(wc):
 			all_sams += sams
 	return( all_sams )
 
-
-
 rule all:
 	input:
-		rgn_fastas = get_region_fastas ,
+		table = expand("{SM}_summary.tbl", SM = SMS) 
+		#rgn_fastas = get_region_fastas ,
+		#bed = get_perID_beds 
 
 rule alignment:
     input:
@@ -142,12 +142,13 @@ samtools faidx {input.fasta} '{params.regions}' >> {output.fasta}
 
 rule query_region_sam:
 	input:
-		bam = "{SM}.bam" ,
-		bai = rules.get_alignment_index.output.bai
+		fasta = rules.region_fasta.output.fasta
+		#bam = "{SM}.bam" ,
+		#bai = rules.get_alignment_index.output.bai
 	params:
 		regions = get_region
 	output:
-		query_region_sam = temp("{SM}_{RGN}_{Q}.sam")
+		query_region_sam = temp("query_region_sam/{SM}_{RGN}_{Q}.bam")
 
 	shell:"""
 samtools view -H {input.bam} > {output.query_region_sam}
@@ -156,14 +157,58 @@ samtools view {input.bam} | grep '{wildcards.Q}' >> {output.query_region_sam}
 
 rule get_perID_results:
 	input:
-		sam_region_q = get_region_q_contig_sams 
+		sam_region_q = rules.query_region_sam.output.query_region_sam 
 	output:
-		bed = temp("{SM}_{RGN}_{Q}.bed")
+		bed = temp("perID/{SM}_{RGN}_{Q}.bed")
 	shell:"""
 perID_path=~mvollger/projects/hifi_asm/scripts/samIdentity.py
-samtools view -h -F 260 -S {input.sam_region_q} | python3 ${perID_path} --bed - > {output.bed}
+samtools view -h -F 260 -S {input.sam_region_q} | python3 $perID_path --bed - > {output.bed}
 """
 
-#rule consolidate_table:
-#	inputs:
+def get_perID_beds(wc):
+    """
+    get file names for beds processed by mvolleger's samIdentity.py.
+    @input: wc
+    @output: list of bed file names used for rule all
+    """
+    all_beds = []
+    for SM in SMS:
+        cur_regions = SM_region[SM]
+        cur_q_contigs = get_q_contigs(SM_qs[SM])
+        cur_SM_RGNs = expand("{SM}_{RGN}", SM = [SM] , RGN = list(cur_regions.keys() ) )  #double expand...
+        for SM_RGN in cur_SM_RGNs:
+            beds = expand(SM_RGN + "_{Q_CONTIG}.bed", Q_CONTIG = cur_q_contigs )
+            all_beds += beds
+    return( expand("perID/" + "{perID}" , perID = all_beds)) #all_beds )
 
+def get_rgn_bed(wc):
+	return "{dir_path}/{file_name}".format(dir_path = CNF_DIR, file_name = config[wc.SM]["regions"])
+
+rule consolidate_table:
+	input:
+		perID = get_perID_beds ,
+		rgn_bed = get_rgn_bed
+	output:
+		table = "{SM}_summary.tbl"
+	shell:"""
+in_dir=`dirname {input.perID[0]}`
+echo ${{in_dir}}
+files=(`ls -d ${{in_dir}}/*.bed`)
+
+head -n 1 ${{files[1]}} > {output.table}
+
+for perID_file in ${{files[@]}}
+do
+	sed -e '1d' $perID_file >> temp_out_table #{output.table}
+done
+
+#get intersection
+bedtools intersect -a {input.rgn_bed} -b temp_out_table > temp_region_alignment
+
+###TEMPORARY: NEED TO CHANGE TO ACCOUNT FOR BED FILES LACKING NAME COLUMN
+cut -f 4 temp_region_alignment | paste - temp_out_table >> {output.table}
+#### TEMPORARY
+
+rm temp_region_alignment
+rm temp_out_table
+"""
