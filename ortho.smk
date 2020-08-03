@@ -2,7 +2,7 @@ import os
 SMK_DIR = os.path.dirname(workflow.snakefile) #workflow.snakefile == full path to snakefile 
 shell.prefix("source {}/env.cfg; set -eo pipefail;".format(SMK_DIR)) #source env config before anything gets run ##these eo sets tells pipeline to stop running if one of lines fails.
 configfile: "ortho.yaml"
-CNF_DIR = os.path.dirname( os.path.abspath("ortho.yaml") )
+CNF_DIR = os.path.dirname( os.path.abspath("ortho.yaml") ) #dir holding config file
 SMS = list(config.keys()) #just strings of element names in yaml ["a","b"]
 SM_region = {}
 SM_qs = {}
@@ -73,25 +73,9 @@ def get_region_fastas(wc):
         all_fastas += fastas
     return( all_fastas )
 
-def get_region_q_contig_sams(wc):
-	"""
-	get file names for fastas with region and query contig specific sequence.
-	@input: wc
-	@output: list of fasta file names used for rule all
-	"""
-	all_sams = []
-	for SM in SMS:
-		cur_regions = SM_region[SM]
-		cur_q_contigs = get_q_contigs(SM_qs[SM])
-		cur_SM_RGNs = expand("{SM}_{RGN}", SM = [SM] , RGN = list(cur_regions.keys() ) )  #double expand...
-		for SM_RGN in cur_SM_RGNs:
-			sams = expand(SM_RGN + "_{Q_CONTIG}.sam", Q_CONTIG = cur_q_contigs )
-			all_sams += sams
-	return( all_sams )
-
 rule all:
 	input:
-		table = expand("{SM}_summary.tbl", SM = SMS) 
+		table = expand("{SM}_summary.tbl", SM = SMS) #consolidate table 
 		#rgn_fastas = get_region_fastas ,
 		#bed = get_perID_beds 
 
@@ -123,6 +107,7 @@ samtools index {input.bam}
 def get_region( wc  ):
     return SM_region[wc.SM][wc.RGN]
 
+#extract region specify fasta from alignment with subseq. Add region name to end of sequence names.
 rule region_fasta:
     input:
         bam = "{SM}.bam",
@@ -141,41 +126,42 @@ $subseq_path -r '{params.regions}' -b -o {output.tmp} {input.bam}
 #get reference sequence and add to output fasta
 samtools faidx {input.fasta} '{params.regions}' >> {output.tmp}
 
-#fix name here with awk
+#add region name to sequence alignment here.
 echo {wildcards.RGN}
 awk -v rgn={wildcards.RGN} '{{if ($0 ~ />/) {{printf "%s_%s",$1, rgn; print"" }} else {{print $0}} }}' {output.tmp} > {output.fasta}
 """
 
-rule query_region_bam:
+#run 2nd alignment to get specific alignment results for primary sequence alignment and later perID analysis. 
+rule region_bam:
 	input:
 		ref = get_ref ,
-		q_fasta = rules.region_fasta.output.fasta ,#"{SM}_{RGN}.fa" 
+		rgn_fasta = rules.region_fasta.output.fasta ,#"{SM}_{RGN}.fa" 
 		#bam = "{SM}.bam" ,
 		#bai = rules.get_alignment_index.output.bai
 	params:
 		regions = get_region
 	output:
-		query_region_bam = temp("query_region_bam/{SM}_{RGN}_{Q}.bam") ,
-		bai = temp("query_region_bam/{SM}_{RGN}_{Q}.bam.bai")
+		region_bam = temp("{RGN}_alignment/{SM}_{RGN}.bam") ,
+		bai = temp("{RGN}_alignment/{SM}_{RGN}.bam.bai")
 	shell:"""
 #run minimap2
 minimap2 -x asm20 -a --eqx -Y -r 50000 -M 0 --hard-mask-level --secondary=no \
         -t {threads} -I 8g -2 -K 1500m \
-        {input.ref} <(cat {input.q_fasta}) \
-        | samtools view -b -S - | samtools view -b -F 2308 | samtools sort - > {output.query_region_bam}
+        {input.ref} <(cat {input.rgn_fasta}) \
+        | samtools view -b -S - | samtools view -b -F 2308 | samtools sort - > {output.region_bam}
 
 #sort and index
-samtools index {output.query_region_bam} 
+samtools index {output.region_bam} 
 """
 
 rule get_perID_results:
 	input:
-		bam_region_q = rules.query_region_bam.output.query_region_bam 
+		region_bam = rules.region_bam.output.region_bam 
 	output:
-		bed = temp("perID/{SM}_{RGN}_{Q}.bed")
+		bed = temp("perID/{SM}_{RGN}.bed")
 	shell:"""
 perID_path=~mvollger/projects/hifi_asm/scripts/samIdentity.py
-python3 $perID_path --bed {input.bam_region_q} > {output.bed}
+python3 $perID_path --bed {input.region_bam} > {output.bed}
 """
 
 def get_perID_beds(wc):
@@ -187,11 +173,12 @@ def get_perID_beds(wc):
     all_beds = []
     for SM in SMS:
         cur_regions = SM_region[SM]
-        cur_q_contigs = get_q_contigs(SM_qs[SM])
-        cur_SM_RGNs = expand("{SM}_{RGN}", SM = [SM] , RGN = list(cur_regions.keys() ) )  #double expand...
-        for SM_RGN in cur_SM_RGNs:
-            beds = expand(SM_RGN + "_{Q_CONTIG}.bed", Q_CONTIG = cur_q_contigs )
-            all_beds += beds
+#        cur_q_contigs = get_q_contigs(SM_qs[SM])
+        cur_SM_RGNs = expand("{SM}_{RGN}.bed", SM = [SM] , RGN = list(cur_regions.keys() ) ) 
+#        for SM_RGN in cur_SM_RGNs:
+#            beds = expand(SM_RGN + "_{Q_CONTIG}.bed", Q_CONTIG = cur_q_contigs )
+#            all_beds += beds
+        all_beds += cur_SM_RGNs
     return( expand("perID/" + "{perID}" , perID = all_beds)) #all_beds )
 
 def get_rgn_bed(wc):
