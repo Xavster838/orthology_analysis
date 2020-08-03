@@ -61,7 +61,7 @@ def get_q_contigs( query_list):
 		with open(cur_q) as fp:
 			for cnt , line in enumerate(fp):
 				if(line[0] == ">"):
-					contigs.append( line.strip(">").rstrip()) 
+					contigs.append( line.strip(">").rstrip().split()[0]) #get rif of > and ending white space, take first part of header. 
 	return contigs
 
 def get_region_fastas(wc):
@@ -131,38 +131,51 @@ rule region_fasta:
     params:
         regions = get_region 
     output:
-        fasta = "{SM}_{RGN}.fa" #note may have to change the naming scheme...
+        fasta = "{SM}_{RGN}.fa" , 
+        tmp = temp("tmp_{SM}_{RGN}.fa")
     shell:"""
-#echo "{params.regions}"
+#run subseq
 subseq_path=/net/eichler/vol27/projects/structural_variation/nobackups/tools/seqtools/201910/CentOS6/bin/subseqfa
-$subseq_path -r '{params.regions}' -b -o {output.fasta} {input.bam}
+$subseq_path -r '{params.regions}' -b -o {output.tmp} {input.bam}
 
-samtools faidx {input.fasta} '{params.regions}' >> {output.fasta}
+#get reference sequence and add to output fasta
+samtools faidx {input.fasta} '{params.regions}' >> {output.tmp}
+
+#fix name here with awk
+echo {wildcards.RGN}
+awk -v rgn={wildcards.RGN} '{{if ($0 ~ />/) {{printf "%s_%s",$1, rgn; print"" }} else {{print $0}} }}' {output.tmp} > {output.fasta}
 """
 
-rule query_region_sam:
+rule query_region_bam:
 	input:
-		fasta = rules.region_fasta.output.fasta
+		ref = get_ref ,
+		q_fasta = rules.region_fasta.output.fasta ,#"{SM}_{RGN}.fa" 
 		#bam = "{SM}.bam" ,
 		#bai = rules.get_alignment_index.output.bai
 	params:
 		regions = get_region
 	output:
-		query_region_sam = temp("query_region_sam/{SM}_{RGN}_{Q}.bam")
-
+		query_region_bam = temp("query_region_bam/{SM}_{RGN}_{Q}.bam") ,
+		bai = temp("query_region_bam/{SM}_{RGN}_{Q}.bam.bai")
 	shell:"""
-samtools view -H {input.bam} > {output.query_region_sam}
-samtools view {input.bam} | grep '{wildcards.Q}' >> {output.query_region_sam}
+#run minimap2
+minimap2 -x asm20 -a --eqx -Y -r 50000 -M 0 --hard-mask-level --secondary=no \
+        -t {threads} -I 8g -2 -K 1500m \
+        {input.ref} <(cat {input.q_fasta}) \
+        | samtools view -b -S - | samtools view -b -F 2308 | samtools sort - > {output.query_region_bam}
+
+#sort and index
+samtools index {output.query_region_bam} 
 """
 
 rule get_perID_results:
 	input:
-		sam_region_q = rules.query_region_sam.output.query_region_sam 
+		bam_region_q = rules.query_region_bam.output.query_region_bam 
 	output:
 		bed = temp("perID/{SM}_{RGN}_{Q}.bed")
 	shell:"""
 perID_path=~mvollger/projects/hifi_asm/scripts/samIdentity.py
-samtools view -h -F 260 -S {input.sam_region_q} | python3 $perID_path --bed - > {output.bed}
+python3 $perID_path --bed {input.bam_region_q} > {output.bed}
 """
 
 def get_perID_beds(wc):
