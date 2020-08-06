@@ -75,7 +75,7 @@ def get_region_fastas(wc):
 
 rule all:
 	input:
-		table = expand("{SM}_summary.tbl", SM = SMS) #consolidate table 
+		table = expand("{SM}/{SM}_summary.tbl", SM = SMS) #consolidate table 
 		#rgn_fastas = get_region_fastas ,
 		#bed = get_perID_beds 
 
@@ -84,7 +84,7 @@ rule alignment:
         ref = get_ref , 
         qs = get_qs ,
     output:
-        bam = "{SM}.bam",
+        bam = "{SM}/{SM}.bam",
     threads: 16 #snakemake will scale to either 16 or largest n_threads it can.
     shell:""" 
 echo {input}
@@ -110,14 +110,14 @@ def get_region( wc  ):
 #extract region specify fasta from alignment with subseq. Add region name to end of sequence names.
 rule region_fasta:
     input:
-        bam = "{SM}.bam",
+        bam = rules.alignment.output.bam,
         bai = rules.get_alignment_index.output.bai ,
         fasta = get_ref 
     params:
         regions = get_region 
     output:
-        fasta = "{RGN}_alignment/{SM}_{RGN}.fa" , 
-        tmp = temp("tmp_{SM}_{RGN}.fa")
+        fasta = "{SM}/{RGN}_alignment/{SM}_{RGN}.fa" , 
+        tmp = temp("{SM}/{RGN}_alignment/tmp_{SM}_{RGN}.fa")
     shell:"""
 #run subseq
 subseq_path=/net/eichler/vol27/projects/structural_variation/nobackups/tools/seqtools/201910/CentOS6/bin/subseqfa
@@ -141,8 +141,8 @@ rule region_bam:
 	params:
 		regions = get_region
 	output:
-		region_bam = temp("{RGN}_alignment/{SM}_{RGN}.bam") ,
-		bai = temp("{RGN}_alignment/{SM}_{RGN}.bam.bai")
+		region_bam = temp("{SM}/{RGN}_alignment/{SM}_{RGN}.bam") ,
+		bai = temp("{SM}/{RGN}_alignment/{SM}_{RGN}.bam.bai")
 	shell:"""
 #run minimap2
 minimap2 -x asm20 -a --eqx -Y -r 50000 -M 0 --hard-mask-level --secondary=no \
@@ -158,7 +158,7 @@ rule get_perID_results:
 	input:
 		region_bam = rules.region_bam.output.region_bam 
 	output:
-		bed = temp("perID/{SM}_{RGN}.bed")
+		bed = temp("{SM}/perID/{RGN}.bed")
 	shell:"""
 perID_path=~mvollger/projects/hifi_asm/scripts/samIdentity.py
 python3 $perID_path --bed {input.region_bam} > {output.bed}
@@ -170,16 +170,9 @@ def get_perID_beds(wc):
     @input: wc
     @output: list of bed file names used for rule all
     """
-    all_beds = []
-    for SM in SMS:
-        cur_regions = SM_region[SM]
-#        cur_q_contigs = get_q_contigs(SM_qs[SM])
-        cur_SM_RGNs = expand("{SM}_{RGN}.bed", SM = [SM] , RGN = list(cur_regions.keys() ) ) 
-#        for SM_RGN in cur_SM_RGNs:
-#            beds = expand(SM_RGN + "_{Q_CONTIG}.bed", Q_CONTIG = cur_q_contigs )
-#            all_beds += beds
-        all_beds += cur_SM_RGNs
-    return( expand("perID/" + "{perID}" , perID = all_beds)) #all_beds )
+    cur_regions = SM_region[wc.SM]
+    cur_SM_RGNs = expand( "{RGN}.bed" ,  RGN = list(cur_regions.keys() ) ) 
+    return( expand("{SM}/perID/" + "{perID}" , SM = wc.SM ,perID = cur_SM_RGNs))
 
 def get_rgn_bed(wc):
 	return "{dir_path}/{file_name}".format(dir_path = CNF_DIR, file_name = config[wc.SM]["regions"])
@@ -189,7 +182,7 @@ rule consolidate_table:
 		perID = get_perID_beds ,
 		rgn_bed = get_rgn_bed
 	output:
-		table = "{SM}_summary.tbl"
+		table = "{SM}/{SM}_summary.tbl"
 	shell:"""
 in_dir=`dirname {input.perID[0]}`
 echo ${{in_dir}}
