@@ -1,6 +1,11 @@
-TBC1D3:
-    ref: {hg38 : /net/eichler/vol26/projects/chm13_t2t/nobackups/orthology_analysis/genome_subsets/hg38_chr17.fa}
-    regions: regions.bed
+CYP2D6:
+    ref: /net/eichler/vol26/eee_shared/assemblies/hg38/no_alt/hg38.no_alt.fa
+    regions: CYP2D6/regions.bed 
     qs:
-        - chimp : /net/eichler/vol26/projects/chm13_t2t/nobackups/orthology_analysis/genome_subsets/clint_chimp_utg000005l.fa
-        - orangutan : /net/eichler/vol26/projects/chm13_t2t/nobackups/orthology_analysis/genome_subsets/orangutan_chr17.fa
+        - /net/eichler/vol26/home/mvollger/targeted_hifi_asm/nobackups/CYP2D6_and_TBC1D3/target_asm/TAT_Asm/asm/CYP2D6/CYP2D6_target_assemblies.fasta
+
+TBC1D3:
+    ref: /net/eichler/vol26/eee_shared/assemblies/hg38/no_alt/hg38.no_alt.fa
+    regions: TBC1D3/regions.bed 
+    qs:
+        - /net/eichler/vol26/home/mvollger/targeted_hifi_asm/nobackups/CYP2D6_and_TBC1D3/target_asm/TAT_Asm/asm/TBC1D3/TBC1D3_target_assemblies.fasta
