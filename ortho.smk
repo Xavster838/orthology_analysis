@@ -116,7 +116,7 @@ rule region_fasta:
     params:
         regions = get_region 
     output:
-        fasta = "{SM}_{RGN}.fa" , 
+        fasta = "{RGN}_alignment/{SM}_{RGN}.fa" , 
         tmp = temp("tmp_{SM}_{RGN}.fa")
     shell:"""
 #run subseq
@@ -199,16 +199,7 @@ head -n 1 ${{files[1]}} > {output.table}
 
 for perID_file in ${{files[@]}}
 do
-	sed -e '1d' $perID_file >> temp_out_table #{output.table}
+	sed -e '1d' $perID_file >> {output.table} #temp_out_table #{output.table}
 done
 
-#get intersection
-bedtools intersect -a {input.rgn_bed} -b temp_out_table > temp_region_alignment
-
-###TEMPORARY: NEED TO CHANGE TO ACCOUNT FOR BED FILES LACKING NAME COLUMN
-cut -f 4 temp_region_alignment | paste - temp_out_table >> {output.table}
-#### TEMPORARY
-
-rm temp_region_alignment
-rm temp_out_table
 """
